@@ -19,12 +19,18 @@ import {
 } from 'lucide-react';
 
 export default function LoginPage() {
-  const { user, isAuthenticated, sendOtp, verifyOtp, loginWithEmail, loginAsDemo, logout } = useAuth();
+  const { user, isAuthenticated, sendOtp, verifyOtp, loginWithEmail, loginWithGoogle, loginAsDemo, logout } = useAuth();
   const router = useRouter();
 
   const [authMode, setAuthMode] = useState<'otp' | 'email'>('otp');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   
+  // Google sign in state
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [customGoogleEmail, setCustomGoogleEmail] = useState('');
+  const [customGoogleName, setCustomGoogleName] = useState('');
+  const [isGoogleCustom, setIsGoogleCustom] = useState(false);
+
   // Phone form state
   const [phone, setPhone] = useState('');
   const [fullName, setFullName] = useState('');
@@ -175,6 +181,31 @@ export default function LoginPage() {
     }, 600);
   };
 
+  const handleGoogleSelect = async (accountEmail: string, accountName: string, accountAvatar?: string) => {
+    setIsLoading(true);
+    setErrorMessage('');
+    try {
+      const res = await loginWithGoogle({
+        email: accountEmail,
+        name: accountName,
+        avatar: accountAvatar,
+      });
+      if (res.success) {
+        setShowGoogleModal(false);
+        setSuccessNotice(`Signed in with Google as ${accountName}! Redirecting...`);
+        setTimeout(() => {
+          router.push('/');
+        }, 600);
+      } else {
+        setErrorMessage(res.message || 'Google Sign-in failed.');
+      }
+    } catch {
+      setErrorMessage('Google Sign-in failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // If user is already logged in, show personalized account summary
   if (isAuthenticated && user) {
     return (
@@ -293,6 +324,52 @@ export default function LoginPage() {
                 <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-600" />
                 <span>1-Click Demo</span>
               </button>
+            </div>
+
+            {/* Login Required Gate Notice */}
+            <div className="mt-4 p-3 bg-pink-50 border border-pink-200 text-[#9f2066] rounded-xl flex items-center gap-2.5 text-xs">
+              <Lock className="w-4 h-4 shrink-0 text-[#9f2066]" />
+              <div>
+                <span className="font-bold">Authentication Required:</span> Please sign in or click <strong className="text-amber-800">"1-Click Demo"</strong> to unlock BharatBazaar products, orders & microservices.
+              </div>
+            </div>
+
+            {/* Google Sign-in Option */}
+            <button
+              type="button"
+              onClick={() => setShowGoogleModal(true)}
+              className="w-full mt-4 py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 text-slate-700 font-bold text-xs rounded-xl shadow-2xs flex items-center justify-center gap-3 transition-all cursor-pointer"
+            >
+              {/* Google 4-color SVG */}
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+
+            {/* Divider */}
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200" />
+              </div>
+              <div className="relative flex justify-center text-[10px] uppercase font-semibold text-slate-400">
+                <span className="bg-white px-2">Or continue with Mobile / Email</span>
+              </div>
             </div>
 
             {/* Auth Mode Tabs (Mobile OTP vs Email) */}
@@ -556,6 +633,109 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {/* Google Account Selector Modal */}
+      {showGoogleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            {/* Header */}
+            <div className="p-6 text-center border-b border-slate-100">
+              <svg className="w-8 h-8 mx-auto mb-2" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+              </svg>
+              <h3 className="text-base font-bold text-slate-900">Sign in with Google</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Choose an account to continue to BharatBazaar</p>
+            </div>
+
+            {/* Account List */}
+            <div className="p-3 space-y-1">
+              <button
+                type="button"
+                onClick={() => handleGoogleSelect('pooja.sharma.google@gmail.com', 'Pooja Sharma', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80')}
+                className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-left transition-colors cursor-pointer"
+              >
+                <div className="w-9 h-9 rounded-full bg-pink-100 text-[#9f2066] font-bold flex items-center justify-center shrink-0">
+                  PS
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <div className="text-xs font-bold text-slate-900 truncate">Pooja Sharma</div>
+                  <div className="text-[11px] text-slate-500 truncate">pooja.sharma.google@gmail.com</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleGoogleSelect('bittu.sharma@gmail.com', 'Bittu Sharma', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80')}
+                className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-left transition-colors cursor-pointer"
+              >
+                <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center shrink-0">
+                  BS
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <div className="text-xs font-bold text-slate-900 truncate">Bittu Sharma</div>
+                  <div className="text-[11px] text-slate-500 truncate">bittu.sharma@gmail.com</div>
+                </div>
+              </button>
+
+              {/* Custom account toggle */}
+              {!isGoogleCustom ? (
+                <button
+                  type="button"
+                  onClick={() => setIsGoogleCustom(true)}
+                  className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-left text-xs font-semibold text-slate-600 transition-colors cursor-pointer border-t border-slate-100 mt-1"
+                >
+                  <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                    <UserIcon className="w-4 h-4" />
+                  </div>
+                  <span>Use another account</span>
+                </button>
+              ) : (
+                <div className="p-3 bg-slate-50 rounded-xl space-y-2 mt-2">
+                  <input
+                    type="text"
+                    value={customGoogleName}
+                    onChange={(e) => setCustomGoogleName(e.target.value)}
+                    placeholder="Your Name (e.g. Amit Kumar)"
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg outline-none"
+                  />
+                  <input
+                    type="email"
+                    value={customGoogleEmail}
+                    onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                    placeholder="your.email@gmail.com"
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg outline-none"
+                  />
+                  <button
+                    type="button"
+                    disabled={!customGoogleEmail || !customGoogleName}
+                    onClick={() => handleGoogleSelect(customGoogleEmail, customGoogleName)}
+                    className="w-full py-2 bg-[#4285F4] hover:bg-[#3367d6] disabled:opacity-50 text-white text-xs font-bold rounded-lg cursor-pointer"
+                  >
+                    Continue as {customGoogleName || 'Google User'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Cancel Button */}
+            <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGoogleModal(false);
+                  setIsGoogleCustom(false);
+                }}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

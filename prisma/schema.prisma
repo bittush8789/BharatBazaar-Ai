@@ -1,0 +1,163 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id          String    @id @default(cuid())
+  phone       String?   @unique
+  name        String
+  email       String?   @unique
+  avatar      String?
+  googleId    String?   @unique
+  password    String?
+  gender      String?
+  memberSince String?   @default("March 2024")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  addresses   Address[]
+  orders      Order[]
+
+  @@map("users")
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  street    String
+  city      String
+  state     String
+  pincode   String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("addresses")
+}
+
+model Category {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  slug     String    @unique
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id                 String      @id
+  name               String
+  categoryName       String
+  category           Category    @relation(fields: [categoryName], references: [name])
+  price              Float
+  originalPrice      Float
+  discountPercentage Float
+  rating             Float       @default(4.2)
+  ratingsCount       Int         @default(150)
+  image              String
+  description        String
+  features           String[]
+  inStock            Boolean     @default(true)
+  stockQuantity      Int         @default(100)
+  freeDelivery       Boolean     @default(true)
+  deliveryDays       Int         @default(3)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  orderItems         OrderItem[]
+  embedding          ProductEmbedding?
+
+  @@map("products")
+}
+
+model Order {
+  id             String         @id @default(cuid())
+  orderId        String         @unique
+  userId         String?
+  user           User?          @relation(fields: [userId], references: [id])
+  customerName   String
+  customerEmail  String
+  customerPhone  String
+  streetAddress  String
+  city           String
+  state          String
+  postalCode     String
+  paymentMethod  String         @default("cod")
+  paymentStatus  String         @default("PAID")
+  transactionId  String?
+  status         String         @default("Processing")
+  subtotal       Float
+  discount       Float          @default(0)
+  deliveryFee    Float          @default(0)
+  total          Float
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  items          OrderItem[]
+  shipment       Shipment?
+  returnRequest  ReturnRequest?
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id           String   @id @default(cuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id])
+  productName  String
+  productImage String
+  unitPrice    Float
+  quantity     Int      @default(1)
+  totalPrice   Float
+
+  @@map("order_items")
+}
+
+model Shipment {
+  id           String   @id @default(cuid())
+  orderId      String   @unique
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  awbNumber    String   @unique
+  carrier      String   @default("Bharat Express Logistics")
+  currentStage String   @default("shipped")
+  timeline     Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("shipments")
+}
+
+model ReturnRequest {
+  id           String   @id @default(cuid())
+  returnId     String   @unique
+  orderId      String   @unique
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reason       String
+  resolution   String   @default("refund")
+  upiOrAccount String
+  status       String   @default("PENDING_PICKUP")
+  pickupDate   DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("return_requests")
+}
+
+model ProductEmbedding {
+  id         String   @id @default(cuid())
+  productId  String   @unique
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  chunkText  String
+  embedding  Float[]
+  createdAt  DateTime @default(now())
+
+  @@map("product_embeddings")
+}
+

@@ -104,33 +104,51 @@ export default function OrderHistoryPage() {
     }
   };
 
-  // Load orders safely from LocalStorage
+  // Load orders from Order Management Microservice (PostgreSQL) and LocalStorage
   useEffect(() => {
-    try {
-      const historyRaw = window.localStorage.getItem('bharatbazaar_order_history');
-      let loadedOrders: PlacedOrder[] = historyRaw ? JSON.parse(historyRaw) : [];
+    async function fetchOrders() {
+      try {
+        let localOrders: PlacedOrder[] = [];
+        try {
+          const historyRaw = window.localStorage.getItem('bharatbazaar_order_history');
+          if (historyRaw) localOrders = JSON.parse(historyRaw);
+          const latestRaw = window.localStorage.getItem('bharatbazaar_latest_order');
+          if (latestRaw) {
+            const latest = JSON.parse(latestRaw);
+            if (!localOrders.some((o) => o.orderId === latest.orderId)) {
+              localOrders = [latest, ...localOrders];
+            }
+          }
+        } catch (e) {}
 
-      const latestRaw = window.localStorage.getItem('bharatbazaar_latest_order');
-      if (latestRaw) {
-        const latestOrder: PlacedOrder = JSON.parse(latestRaw);
-        if (!loadedOrders.some((o) => o.orderId === latestOrder.orderId)) {
-          loadedOrders = [latestOrder, ...loadedOrders];
-        }
+        // Fetch authoritative orders from PostgreSQL
+        const apiRes = await microservicesApi.getOrders().catch(() => null);
+        const serverOrders: PlacedOrder[] = apiRes?.data || [];
+
+        // Merge: Server orders + any local orders not yet on server
+        const mergedMap = new Map<string, PlacedOrder>();
+        serverOrders.forEach((o) => mergedMap.set(o.orderId, o));
+        localOrders.forEach((o) => {
+          if (!mergedMap.has(o.orderId)) {
+            mergedMap.set(o.orderId, o);
+          }
+        });
+
+        const allOrders = Array.from(mergedMap.values()).map((o) => ({
+          ...o,
+          status: getOrderStatus(o),
+        }));
+
+        setOrders(allOrders);
+        window.localStorage.setItem('bharatbazaar_order_history', JSON.stringify(allOrders));
+      } catch (err) {
+        console.warn('Failed to load past orders', err);
+      } finally {
+        setIsLoaded(true);
       }
-
-      // If user has orders without explicit status, normalize them
-      const normalized = loadedOrders.map((o) => ({
-        ...o,
-        status: getOrderStatus(o),
-      }));
-
-      setOrders(normalized);
-      window.localStorage.setItem('bharatbazaar_order_history', JSON.stringify(normalized));
-    } catch (err) {
-      console.warn('Failed to load past orders from localStorage', err);
-    } finally {
-      setIsLoaded(true);
     }
+
+    fetchOrders();
   }, []);
 
   // Update an order's status and sync to localStorage and Order Microservice

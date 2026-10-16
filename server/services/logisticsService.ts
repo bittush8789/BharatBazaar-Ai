@@ -1,129 +1,140 @@
 import { Router, Request, Response } from 'express';
 import { eventBus } from '../events/eventBus';
+import { db } from '../db/client';
 
 export const logisticsServiceRouter = Router();
 
-interface Shipment {
-  orderId: string;
-  awbNumber: string;
-  carrier: string;
-  currentStage: 'placed' | 'shipped' | 'out_for_delivery' | 'delivered';
-  timeline: Array<{
-    stage: string;
-    timestamp: string;
-    location: string;
-    description: string;
-  }>;
-}
+// GET /api/tracking/:orderId - Retrieve tracking details for an order
+logisticsServiceRouter.get('/:orderId', async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
 
-const shipmentsStore: Map<string, Shipment> = new Map();
-
-// Helper to create initial shipment record
-function createShipmentForOrder(orderId: string, currentStage: 'placed' | 'shipped' | 'out_for_delivery' | 'delivered' = 'shipped'): Shipment {
-  const awb = `BB-EXP-${Math.floor(10000 + Math.random() * 90000)}`;
-  const now = new Date();
-
-  const shipment: Shipment = {
-    orderId,
-    awbNumber: awb,
-    carrier: 'Bharat Express Logistics',
-    currentStage,
-    timeline: [
-      {
-        stage: 'Order Placed',
-        timestamp: new Date(now.getTime() - 24 * 3600 * 1000).toISOString(),
-        location: 'Merchant Fulfillment Hub, Surat',
-        description: 'Package verified, barcoded, and bagged.',
+    let shipment = await db.shipment.findFirst({
+      where: {
+        OR: [
+          { order: { orderId } },
+          { awbNumber: orderId },
+        ],
       },
-      {
-        stage: 'Shipped',
-        timestamp: new Date(now.getTime() - 12 * 3600 * 1000).toISOString(),
-        location: 'National Linehaul Sorting Center, Delhi NCR',
-        description: 'Dispatched on Linehaul interstate transport.',
+      include: {
+        order: true,
       },
-      {
-        stage: 'Out for Delivery',
-        timestamp: new Date().toISOString(),
-        location: 'Destination Delivery Station',
-        description: 'Assigned to courier executive for doorstep delivery.',
-      },
-      {
-        stage: 'Delivered',
-        timestamp: new Date(now.getTime() + 24 * 3600 * 1000).toISOString(),
-        location: 'Customer Address',
-        description: 'Delivered with OTP / signature verification.',
-      },
-    ],
-  };
-
-  shipmentsStore.set(orderId, shipment);
-  return shipment;
-}
-
-// Seed initial shipments for demo orders
-createShipmentForOrder('BB-89410291', 'delivered');
-createShipmentForOrder('BB-78192043', 'shipped');
-createShipmentForOrder('BB-91024855', 'placed');
-
-// Listen to decoupled events from OrderService via EventBus
-eventBus.subscribe('ORDER_PLACED', (event: any) => {
-  const { orderId } = event.payload || {};
-  if (orderId) {
-    const newShipment = createShipmentForOrder(orderId, 'placed');
-    eventBus.publish('SHIPMENT_CREATED', 'logistics-service', {
-      orderId,
-      awbNumber: newShipment.awbNumber,
-      carrier: newShipment.carrier,
     });
+
+    if (!shipment) {
+      // If order exists without shipment, create shipment record
+      const order = await db.order.findUnique({ where: { orderId } });
+      if (order) {
+        const awb = `BB-EXP-${Math.floor(10000 + Math.random() * 90000)}`;
+        const now = new Date();
+        shipment = await db.shipment.create({
+          data: {
+            orderId: order.id,
+            awbNumber: awb,
+            carrier: 'Bharat Express Logistics',
+            currentStage: order.status === 'Delivered' ? 'delivered' : order.status === 'Shipped' ? 'shipped' : 'placed',
+            timeline: [
+              { stage: 'Order Placed', timestamp: new Date(now.getTime() - 24 * 3600 * 1000).toISOString(), location: 'Surat Fulfillment Center', description: 'Package barcoded and verified.' },
+              { stage: 'Shipped', timestamp: new Date(now.getTime() - 12 * 3600 * 1000).toISOString(), location: 'National Sorting Center, Delhi NCR', description: 'Dispatched on Linehaul transport.' },
+              ...(order.status === 'Delivered' ? [
+                { stage: 'Out for Delivery', timestamp: now.toISOString(), location: 'Local Delivery Station', description: 'Assigned to courier executive.' },
+                { stage: 'Delivered', timestamp: now.toISOString(), location: 'Customer Address', description: 'Delivered with OTP verification.' },
+              ] : []),
+            ],
+          },
+          include: { order: true },
+        });
+      }
+    }
+
+    if (!shipment) {
+      return res.status(404).json({
+        service: 'logistics-service',
+        status: 'error',
+        message: `Tracking info not found for order ${orderId}`,
+      });
+    }
+
+    res.json({
+      service: 'logistics-service',
+      database: 'PostgreSQL',
+      status: 'success',
+      data: {
+        orderId: shipment.order?.orderId || orderId,
+        awbNumber: shipment.awbNumber,
+        carrier: shipment.carrier,
+        currentStage: shipment.currentStage,
+        timeline: shipment.timeline,
+      },
+    });
+  } catch (error: any) {
+    console.error('[LogisticsService] Error fetching tracking:', error);
+    res.status(500).json({ service: 'logistics-service', status: 'error', message: error.message });
   }
 });
 
-// GET /api/tracking/health
+// POST /api/tracking/:orderId/stage - Advance shipment stage
+logisticsServiceRouter.post('/:orderId/stage', async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const { stage, location, description } = req.body;
+
+    const shipment = await db.shipment.findFirst({
+      where: {
+        OR: [
+          { order: { orderId } },
+          { awbNumber: orderId },
+        ],
+      },
+    });
+
+    if (!shipment) {
+      return res.status(404).json({
+        service: 'logistics-service',
+        status: 'error',
+        message: 'Shipment record not found',
+      });
+    }
+
+    const timeline = (shipment.timeline as any[]) || [];
+    timeline.push({
+      stage: stage || 'In Transit',
+      timestamp: new Date().toISOString(),
+      location: location || 'Express Hub Hubli',
+      description: description || `Status updated to ${stage}`,
+    });
+
+    const updated = await db.shipment.update({
+      where: { id: shipment.id },
+      data: {
+        currentStage: stage || shipment.currentStage,
+        timeline,
+      },
+    });
+
+    eventBus.publish('SHIPMENT_STAGE_UPDATED', 'logistics-service', {
+      orderId,
+      awbNumber: updated.awbNumber,
+      stage: updated.currentStage,
+    });
+
+    res.json({
+      service: 'logistics-service',
+      database: 'PostgreSQL',
+      status: 'success',
+      data: updated,
+    });
+  } catch (error: any) {
+    res.status(500).json({ service: 'logistics-service', status: 'error', message: error.message });
+  }
+});
+
+// Health check
 logisticsServiceRouter.get('/health', (_req: Request, res: Response) => {
   res.json({
     service: 'logistics-service',
     status: 'UP',
-    version: '1.0.0',
-    activeShipments: shipmentsStore.size,
+    database: 'PostgreSQL',
     timestamp: new Date().toISOString(),
-  });
-});
-
-// GET /api/tracking/:orderId - Retrieve tracking timeline
-logisticsServiceRouter.get('/:orderId', (req: Request, res: Response) => {
-  let shipment = shipmentsStore.get(req.params.orderId);
-  if (!shipment) {
-    // Generate dynamically if missing
-    shipment = createShipmentForOrder(req.params.orderId, 'shipped');
-  }
-
-  res.json({
-    service: 'logistics-service',
-    status: 'success',
-    data: shipment,
-  });
-});
-
-// POST /api/tracking/:orderId/stage - Update tracking stage
-logisticsServiceRouter.post('/:orderId/stage', (req: Request, res: Response) => {
-  const { stage } = req.body;
-  let shipment = shipmentsStore.get(req.params.orderId);
-  if (!shipment) {
-    shipment = createShipmentForOrder(req.params.orderId);
-  }
-
-  shipment.currentStage = stage;
-  shipmentsStore.set(req.params.orderId, shipment);
-
-  eventBus.publish('SHIPMENT_STAGE_UPDATED', 'logistics-service', {
-    orderId: req.params.orderId,
-    newStage: stage,
-    awbNumber: shipment.awbNumber,
-  });
-
-  res.json({
-    service: 'logistics-service',
-    status: 'success',
-    data: shipment,
   });
 });

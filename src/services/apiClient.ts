@@ -9,6 +9,12 @@ export interface MicroservicesTopology {
     version: string;
     status: string;
     architecture: string;
+    database?: {
+      engine: string;
+      orm: string;
+      status: string;
+      records: { users: number; products: number; orders: number };
+    };
     protocol: string;
   };
   services: Array<{
@@ -34,7 +40,77 @@ export interface MicroservicesTopology {
   systemTime: string;
 }
 
+function getAuthHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(extra || {}),
+  };
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('bb_auth_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  return headers;
+}
+
 export const microservicesApi = {
+  // Service 0: Identity & Authentication
+  async sendOtp(phone: string) {
+    const res = await fetch(`${BASE_URL}/auth/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+    });
+    return res.json();
+  },
+
+  async verifyOtp(phone: string, otp: string, name?: string) {
+    const res = await fetch(`${BASE_URL}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, otp, name }),
+    });
+    return res.json();
+  },
+
+  async loginWithEmail(email: string, password?: string) {
+    const res = await fetch(`${BASE_URL}/auth/login-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    return res.json();
+  },
+
+  async loginWithGoogle(data: { email: string; name: string; avatar?: string; googleId?: string }) {
+    const res = await fetch(`${BASE_URL}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  async getCurrentUser(token: string) {
+    const res = await fetch(`${BASE_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.json();
+  },
+
+  async updateProfile(token: string, data: any) {
+    const res = await fetch(`${BASE_URL}/auth/profile`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
   // Service 1: Catalog Service
   async getProducts(params?: { category?: string; search?: string; sortBy?: string }) {
     const query = new URLSearchParams();
@@ -53,11 +129,17 @@ export const microservicesApi = {
     return res.json();
   },
 
+  async getCategories() {
+    const res = await fetch(`${BASE_URL}/catalog/categories`);
+    if (!res.ok) throw new Error('Catalog categories error');
+    return res.json();
+  },
+
   // Service 2: Cart & Pricing Engine
   async calculateCart(items: Array<{ productId: string; quantity: number }>) {
     const res = await fetch(`${BASE_URL}/cart/calculate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ items }),
     });
     if (!res.ok) throw new Error('Pricing engine error');
@@ -65,9 +147,23 @@ export const microservicesApi = {
   },
 
   // Service 3: Order Management
-  async getOrders(status?: string) {
-    const query = status && status !== 'All' ? `?status=${status}` : '';
-    const res = await fetch(`${BASE_URL}/orders${query}`);
+  async getOrders(params?: { status?: string; phone?: string }) {
+    const query = new URLSearchParams();
+    if (params?.status && params.status !== 'All') query.append('status', params.status);
+    if (params?.phone) query.append('phone', params.phone);
+
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await fetch(`${BASE_URL}/orders${qs}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Order service error');
+    return res.json();
+  },
+
+  async getOrderById(orderId: string) {
+    const res = await fetch(`${BASE_URL}/orders/${orderId}`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error('Order service error');
     return res.json();
   },
@@ -75,7 +171,7 @@ export const microservicesApi = {
   async createOrder(order: PlacedOrder) {
     const res = await fetch(`${BASE_URL}/orders`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(order),
     });
     if (!res.ok) throw new Error('Failed to create order in order service');
@@ -85,7 +181,7 @@ export const microservicesApi = {
   async updateOrderStatus(orderId: string, status: string) {
     const res = await fetch(`${BASE_URL}/orders/${orderId}/status`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ status }),
     });
     if (!res.ok) throw new Error('Failed to update status in order service');
@@ -102,7 +198,7 @@ export const microservicesApi = {
   async updateShipmentStage(orderId: string, stage: string) {
     const res = await fetch(`${BASE_URL}/tracking/${orderId}/stage`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ stage }),
     });
     if (!res.ok) throw new Error('Failed to update tracking stage');
@@ -110,10 +206,10 @@ export const microservicesApi = {
   },
 
   // Service 5: Returns & Reverse Logistics
-  async submitReturn(data: { orderId: string; reason: string; resolution: string; upiOrAccount: string; selectedProductIds: string[] }) {
+  async submitReturn(data: { orderId: string; reason: string; resolution: string; upiOrAccount: string; selectedProductIds?: string[] }) {
     const res = await fetch(`${BASE_URL}/returns`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Returns service error');

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -40,7 +41,7 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Microservices Architecture Server] BharatBazaar running on http://0.0.0.0:${PORT}`);
-    console.log(`[API Gateway] Routing traffic to 5 microservices under /api/*`);
+    console.log(`[API Gateway] Routing traffic to 6 microservices with PostgreSQL 18 DB under /api/*`);
   });
 }
 

@@ -19,14 +19,24 @@ import {
   Zap,
 } from 'lucide-react';
 
+import { microservicesApi } from '../../../services/apiClient';
+import { Product } from '../../../types/product';
+
 export default function ProductDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const { addToCart, items } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [product, setProduct] = useState<Product | null>(() => PRODUCTS.find((p) => p.id === id) || null);
 
-  const product = PRODUCTS.find((p) => p.id === id);
+  React.useEffect(() => {
+    if (id) {
+      microservicesApi.getProductById(id).then((res) => {
+        if (res.data) setProduct(res.data);
+      }).catch((e) => console.warn('Product detail API fallback:', e));
+    }
+  }, [id]);
 
   if (!product) {
     return (

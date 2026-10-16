@@ -16,6 +16,7 @@ import {
 import { ProductImage } from '../../components/ProductImage';
 import { microservicesApi } from '../../services/apiClient';
 import { useAuth } from '../../context/AuthContext';
+import { MockPaymentModal, PaymentSuccessResult } from '../../components/MockPaymentModal';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -35,6 +36,8 @@ export default function CheckoutPage() {
 
   const [errors, setErrors] = useState<Partial<Record<keyof CheckoutFormValues, string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingOrderId, setPendingOrderId] = useState(() => generateOrderId());
 
   // If cart is empty, prompt user to add items
   if (items.length === 0) {
@@ -105,18 +108,29 @@ export default function CheckoutPage() {
       return;
     }
 
+    // Launch interactive Mock Payment Gateway Modal
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentSuccess = (result: PaymentSuccessResult) => {
     setIsSubmitting(true);
+    setShowPaymentModal(false);
 
     const placedOrder: PlacedOrder = {
-      orderId: generateOrderId(),
+      orderId: pendingOrderId,
       date: new Date().toISOString(),
-      customer: formData,
+      customer: {
+        ...formData,
+        paymentMethod: (result.paymentMethod || formData.paymentMethod) as any,
+      },
       items: [...items],
       subtotal,
       discount: totalSavings,
       deliveryFee,
       total: finalTotal,
       status: 'Processing',
+      paymentStatus: result.paymentStatus,
+      transactionId: result.transactionId,
     };
 
     // Store in localStorage for Order Success view and Order History
@@ -127,7 +141,7 @@ export default function CheckoutPage() {
       const updatedHistory = [placedOrder, ...historyList.filter((o) => o.orderId !== placedOrder.orderId)];
       window.localStorage.setItem('bharatbazaar_order_history', JSON.stringify(updatedHistory));
 
-      // Asynchronously dispatch to Order Management Microservice
+      // Asynchronously dispatch to Order Management Microservice (PostgreSQL)
       microservicesApi.createOrder(placedOrder).catch((err) => {
         console.warn('[Microservices Client] Fallback to local storage:', err);
       });
@@ -135,12 +149,12 @@ export default function CheckoutPage() {
       console.warn('Failed to store order history', err);
     }
 
-    // Simulate rapid smooth processing
+    // Rapid smooth redirect to Order Success
     setTimeout(() => {
       clearCart();
       setIsSubmitting(false);
       router.push('/order-success');
-    }, 600);
+    }, 500);
   };
 
   return (
@@ -547,6 +561,17 @@ export default function CheckoutPage() {
           </div>
         </div>
       </div>
+
+      {/* Interactive Mock Payment Gateway Modal */}
+      <MockPaymentModal
+        isOpen={showPaymentModal}
+        orderId={pendingOrderId}
+        totalAmount={finalTotal}
+        customerName={formData.fullName}
+        customerPhone={formData.phone}
+        onSuccess={handlePaymentSuccess}
+        onClose={() => setShowPaymentModal(false)}
+      />
     </div>
   );
 }

@@ -26,6 +26,8 @@ export interface PlacedOrder {
   deliveryFee: number;
   total: number;
   status?: 'Delivered' | 'Shipped' | 'Processing';
+  paymentStatus?: 'PAID' | 'PENDING' | 'REFUNDED';
+  transactionId?: string;
   returnRequest?: {
     returnId: string;
     reason: string;

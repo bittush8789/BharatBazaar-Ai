@@ -15,10 +15,20 @@ import OrderSuccessPage from './app/order-success/page';
 import OrderHistoryPage from './app/order-history/page';
 import ReturnPolicyPage from './app/returns/page';
 import LoginPage from './app/login/page';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 
 function AppRouter() {
   const pathname = usePathname();
+  const { isAuthenticated } = useAuth();
+
+  // Enforce: User must login first before using any services
+  if (!isAuthenticated) {
+    return (
+      <RootLayout>
+        <LoginPage />
+      </RootLayout>
+    );
+  }
 
   const renderCurrentPage = () => {
     // Dynamic product route: /products/:id
