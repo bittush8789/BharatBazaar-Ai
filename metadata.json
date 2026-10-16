@@ -1,0 +1,6 @@
+{
+  "name": "BharatBazaar - Indian Online Shopping Store",
+  "description": "Discover trendiest ethnic fashion, men's wear, home decor, and beauty essentials at direct-from-manufacturer prices with free delivery and cash on delivery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
